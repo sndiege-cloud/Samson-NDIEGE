@@ -1,140 +1,210 @@
 /* ============================================
-   1. CODE PLAYGROUND
+   LEARNING MATERIALS HUB
+   Stores materials in localStorage.
+   Files are converted to base64 data URLs.
+   No external APIs required.
    ============================================ */
-function runCode() {
-  const output = document.getElementById('output');
-  const code = document.getElementById('code-input').value;
 
-  // Capture console.log output
-  let logs = [];
-  const originalLog = console.log;
-  console.log = function (...args) {
-    logs.push(args.join(' '));
-    originalLog.apply(console, args);
+const STORAGE_KEY = 'learning_materials';
+
+/* ---------- Load & Save ---------- */
+function loadMaterials() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMaterials(materials) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(materials));
+  } catch (e) {
+    alert('Storage is full. Try removing some large files or use links instead.');
+  }
+}
+
+/* ---------- Render All Categories ---------- */
+function renderAll() {
+  const materials = loadMaterials();
+
+  // Clear all lists
+  document.querySelectorAll('.materials-list').forEach(list => {
+    list.innerHTML = '';
+  });
+
+  // Group by category
+  const byCategory = {};
+  materials.forEach(m => {
+    if (!byCategory[m.category]) byCategory[m.category] = [];
+    byCategory[m.category].push(m);
+  });
+
+  // Render each category
+  document.querySelectorAll('.materials-list').forEach(list => {
+    const cat = list.dataset.category;
+    const items = byCategory[cat] || [];
+
+    if (items.length === 0) {
+      list.innerHTML = '<p class="empty-message">No materials yet. Add one above.</p>';
+      return;
+    }
+
+    items.forEach(item => {
+      list.appendChild(createCard(item));
+    });
+  });
+}
+
+/* ---------- Create a Material Card ---------- */
+function createCard(item) {
+  const card = document.createElement('div');
+  card.className = 'material-card';
+
+  const title = document.createElement('h3');
+  title.textContent = item.title;
+
+  const desc = document.createElement('p');
+  desc.className = 'desc';
+  desc.textContent = item.description || '';
+
+  const meta = document.createElement('p');
+  meta.className = 'meta';
+  const date = new Date(item.date).toLocaleDateString();
+  meta.textContent = `Added ${date}` + (item.fileName ? ` • ${item.fileName}` : '');
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+
+  // Open button
+  const openBtn = document.createElement('button');
+  openBtn.className = 'small';
+  openBtn.textContent = 'Open';
+  openBtn.onclick = () => {
+    if (item.dataUrl) {
+      // Open uploaded file in new tab
+      const w = window.open();
+      w.document.write(
+        `<iframe src="${item.dataUrl}" style="border:0;width:100%;height:100vh;"></iframe>`
+      );
+    } else if (item.link) {
+      window.open(item.link, '_blank');
+    }
+  };
+  actions.appendChild(openBtn);
+
+  // Download button (only for uploaded files)
+  if (item.dataUrl) {
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'small secondary';
+    dlBtn.textContent = 'Download';
+    dlBtn.onclick = () => {
+      const a = document.createElement('a');
+      a.href = item.dataUrl;
+      a.download = item.fileName || 'material';
+      a.click();
+    };
+    actions.appendChild(dlBtn);
+  }
+
+  // Delete button
+  const delBtn = document.createElement('button');
+  delBtn.className = 'small danger';
+  delBtn.textContent = 'Delete';
+  delBtn.onclick = () => deleteMaterial(item.id);
+  actions.appendChild(delBtn);
+
+  card.appendChild(title);
+  card.appendChild(desc);
+  card.appendChild(meta);
+  card.appendChild(actions);
+
+  return card;
+}
+
+/* ---------- Add Material ---------- */
+document.getElementById('upload-form').addEventListener('submit', function (e) {
+  e.preventDefault();
+
+  const category = document.getElementById('category').value;
+  const title = document.getElementById('title').value.trim();
+  const description = document.getElementById('description').value.trim();
+  const fileInput = document.getElementById('file-input');
+  const link = document.getElementById('link-input').value.trim();
+
+  if (!category || !title) {
+    alert('Please choose a category and enter a title.');
+    return;
+  }
+
+  if (!fileInput.files.length && !link) {
+    alert('Please upload a file or paste a link.');
+    return;
+  }
+
+  const material = {
+    id: Date.now().toString(),
+    category,
+    title,
+    description,
+    link: link || '',
+    fileName: '',
+    dataUrl: '',
+    date: new Date().toISOString()
   };
 
-  try {
-    // Execute the user's code
-    const result = new Function(code)();
-    if (result !== undefined) {
-      logs.push('→ ' + result);
-    }
-    output.textContent = logs.length > 0 ? logs.join('\n') : '// Code ran with no output.';
-  } catch (error) {
-    output.textContent = '❌ Error: ' + error.message;
-  } finally {
-    // Restore original console.log
-    console.log = originalLog;
-  }
-}
+  // If a file was uploaded, convert to base64
+  if (fileInput.files.length) {
+    const file = fileInput.files[0];
+    material.fileName = file.name;
 
-function clearOutput() {
-  document.getElementById('output').textContent = '// Output will appear here...';
-}
-
-/* ============================================
-   2. QUIZ
-   ============================================ */
-function submitQuiz() {
-  const questions = document.querySelectorAll('.quiz-question');
-  let score = 0;
-  let answered = 0;
-
-  questions.forEach((q) => {
-    const correctAnswer = q.dataset.answer;
-    const selected = q.querySelector('input[type="radio"]:checked');
-
-    // Clear previous styles
-    q.querySelectorAll('.quiz-option').forEach(opt => {
-      opt.classList.remove('correct', 'wrong');
-    });
-
-    if (selected) {
-      answered++;
-      const selectedLabel = selected.closest('.quiz-option');
-      if (selected.value === correctAnswer) {
-        score++;
-        selectedLabel.classList.add('correct');
-      } else {
-        selectedLabel.classList.add('wrong');
-        // Highlight the correct answer
-        q.querySelectorAll('.quiz-option').forEach(opt => {
-          const input = opt.querySelector('input');
-          if (input.value === correctAnswer) {
-            opt.classList.add('correct');
-          }
-        });
-      }
-    }
-  });
-
-  const resultDiv = document.getElementById('quiz-result');
-  const percentage = Math.round((score / questions.length) * 100);
-
-  if (answered < questions.length) {
-    resultDiv.textContent = `⚠️ Please answer all ${questions.length} questions. (${answered}/${questions.length} answered)`;
-    resultDiv.className = 'fail';
-  } else if (score === questions.length) {
-    resultDiv.textContent = `🎉 Perfect! You scored ${score}/${questions.length} (${percentage}%).`;
-    resultDiv.className = 'pass';
-  } else if (percentage >= 60) {
-    resultDiv.textContent = `✅ Good job! You scored ${score}/${questions.length} (${percentage}%).`;
-    resultDiv.className = 'pass';
+    const reader = new FileReader();
+    reader.onload = function (event) {
+      material.dataUrl = event.target.result;
+      const materials = loadMaterials();
+      materials.push(material);
+      saveMaterials(materials);
+      renderAll();
+      resetForm();
+    };
+    reader.readAsDataURL(file);
   } else {
-    resultDiv.textContent = `📚 You scored ${score}/${questions.length} (${percentage}%). Review the lesson and try again.`;
-    resultDiv.className = 'fail';
+    const materials = loadMaterials();
+    materials.push(material);
+    saveMaterials(materials);
+    renderAll();
+    resetForm();
   }
+});
+
+/* ---------- Delete Material ---------- */
+function deleteMaterial(id) {
+  if (!confirm('Delete this material?')) return;
+  const materials = loadMaterials().filter(m => m.id !== id);
+  saveMaterials(materials);
+  renderAll();
 }
 
-function resetQuiz() {
-  document.getElementById('quiz-form').reset();
-  document.querySelectorAll('.quiz-option').forEach(opt => {
-    opt.classList.remove('correct', 'wrong');
-  });
-  const resultDiv = document.getElementById('quiz-result');
-  resultDiv.style.display = 'none';
-  resultDiv.className = '';
+/* ---------- Clear All ---------- */
+function clearAllMaterials() {
+  if (!confirm('Delete ALL materials? This cannot be undone.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  renderAll();
 }
 
-/* ============================================
-   3. CALCULATOR
-   ============================================ */
-let calcExpression = '';
-
-function calcInput(value) {
-  calcExpression += value;
-  document.getElementById('calc-display').textContent = calcExpression;
+/* ---------- Reset Form ---------- */
+function resetForm() {
+  document.getElementById('upload-form').reset();
 }
 
-function calcClear() {
-  calcExpression = '';
-  document.getElementById('calc-display').textContent = '0';
-}
-
-function calcEqual() {
-  try {
-    // Safe evaluation: only allow numbers and operators
-    if (!/^[0-9+\-*/.]+$/.test(calcExpression)) {
-      throw new Error('Invalid characters');
-    }
-    const result = Function('"use strict"; return (' + calcExpression + ')')();
-    document.getElementById('calc-display').textContent = result;
-    calcExpression = String(result);
-  } catch (error) {
-    document.getElementById('calc-display').textContent = 'Error';
-    calcExpression = '';
-  }
-}
-
-/* ============================================
-   4. SMOOTH SCROLL FOR NAV LINKS
-   ============================================ */
+/* ---------- Smooth Scroll ---------- */
 document.querySelectorAll('nav a').forEach(link => {
   link.addEventListener('click', function (e) {
     e.preventDefault();
     const target = document.querySelector(this.getAttribute('href'));
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 });
+
+/* ---------- Initialize ---------- */
+renderAll();
